@@ -1,7 +1,7 @@
 [package]
 name = "dissimilar"
-version = "1.0.2"
-authors = ["David Tolnay <dtolnay@gmail.com>"]
+version = "2.0.0"
+authors = ["David Tolnay <dtolnay@gmail.com>", "Zack Hixon <zphixon@gmail.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
 description = "Diff library with semantic cleanup, based on Google's diff-match-patch"
@@ -13,3 +13,10 @@ readme = "README.md"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+unicode-segmentation = "1.7.1"
+
+[features]
+default = ["extended-graphemes"]
+extended-graphemes = []

@@ -21,6 +21,10 @@
 //! strings and the return value of the diff algorithm is a vector of chunks
 //! pointing into slices of those input strings.
 //!
+//! # Extensions from dtolnay/similar
+//!
+//! This fork adds serde support for Chunk, and exposes Diff and other items.
+//!
 //! ```
 //! pub enum Chunk<'a> {
 //!     Equal(&'a str),
@@ -55,7 +59,7 @@
 )]
 
 mod find;
-mod range;
+pub mod range;
 
 #[cfg(test)]
 mod tests;
@@ -65,6 +69,12 @@ use std::cmp;
 use std::collections::VecDeque;
 use std::fmt::{self, Debug};
 
+#[cfg(feature = "extended-graphemes")]
+const USE_EXTENDED_GRAPHEMES: bool = true;
+
+#[cfg(not(feature = "extended-graphemes"))]
+const USE_EXTENDED_GRAPHEMES: bool = false;
+
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Chunk<'a> {
     Equal(&'a str),
@@ -73,14 +83,14 @@ pub enum Chunk<'a> {
 }
 
 #[derive(Copy, Clone)]
-enum Diff<'a, 'b> {
+pub enum Diff<'a, 'b> {
     Equal(Range<'a>, Range<'b>),
     Delete(Range<'a>),
     Insert(Range<'b>),
 }
 
 impl<'tmp, 'a: 'tmp, 'b: 'tmp> Diff<'a, 'b> {
-    fn text(&self) -> Range<'tmp> {
+    pub fn text(&self) -> Range<'tmp> {
         match *self {
             Diff::Equal(range, _) | Diff::Delete(range) | Diff::Insert(range) => range,
         }
@@ -127,7 +137,7 @@ pub fn diff<'a>(text1: &'a str, text2: &'a str) -> Vec<Chunk<'a>> {
     solution.diffs.into_iter().map(Chunk::from).collect()
 }
 
-struct Solution<'a, 'b> {
+pub struct Solution<'a, 'b> {
     text1: Range<'a>,
     text2: Range<'b>,
     diffs: Vec<Diff<'a, 'b>>,
@@ -339,7 +349,7 @@ fn bisect_split<'a, 'b>(
 
 // Determine the length of the common prefix of two strings.
 fn common_prefix(text1: Range, text2: Range) -> usize {
-    for ((i, ch1), ch2) in text1.char_indices().zip(text2.chars()) {
+    for ((i, ch1), ch2) in text1.grapheme_indices().zip(text2.graphemes()) {
         if ch1 != ch2 {
             return i;
         }
@@ -349,9 +359,9 @@ fn common_prefix(text1: Range, text2: Range) -> usize {
 
 // Determine the length of the common suffix of two strings.
 fn common_suffix(text1: Range, text2: Range) -> usize {
-    for ((i, ch1), ch2) in text1.char_indices().rev().zip(text2.chars().rev()) {
+    for ((i, ch1), ch2) in text1.grapheme_indices().rev().zip(text2.graphemes().rev()) {
         if ch1 != ch2 {
-            return text1.len - i - ch1.len_utf8();
+            return text1.len - i - ch1.len();
         }
     }
     cmp::min(text1.len, text2.len)
@@ -620,9 +630,10 @@ fn cleanup_semantic_lossless(solution: &mut Solution) {
                 + cleanup_semantic_score(edit.text(), next_equal1);
             while !edit.text().is_empty()
                 && !next_equal1.is_empty()
-                && edit.text().chars().next().unwrap() == next_equal1.chars().next().unwrap()
+                && edit.text().graphemes().next().unwrap()
+                    == next_equal1.graphemes().next().unwrap()
             {
-                let increment = edit.text().chars().next().unwrap().len_utf8();
+                let increment = edit.text().graphemes().next().unwrap().len();
                 prev_equal1.len += increment;
                 prev_equal2.len += increment;
                 edit.shift_right(increment);
@@ -676,14 +687,14 @@ fn cleanup_semantic_score(one: Range, two: Range) -> usize {
     // Since this function's purpose is largely cosmetic, the choice has been
     // made to use each language's native features rather than force total
     // conformity.
-    let char1 = one.chars().next_back().unwrap();
-    let char2 = two.chars().next().unwrap();
-    let non_alphanumeric1 = !char1.is_ascii_alphanumeric();
-    let non_alphanumeric2 = !char2.is_ascii_alphanumeric();
-    let whitespace1 = non_alphanumeric1 && char1.is_ascii_whitespace();
-    let whitespace2 = non_alphanumeric2 && char2.is_ascii_whitespace();
-    let line_break1 = whitespace1 && char1.is_control();
-    let line_break2 = whitespace2 && char2.is_control();
+    let char1: &str = one.graphemes().next_back().unwrap();
+    let char2 = two.graphemes().next().unwrap();
+    let non_alphanumeric1 = !is_ascii_alphanumeric(char1);
+    let non_alphanumeric2 = !is_ascii_alphanumeric(char2);
+    let whitespace1 = non_alphanumeric1 && is_ascii_whitespace(char1);
+    let whitespace2 = non_alphanumeric2 && is_ascii_whitespace(char2);
+    let line_break1 = whitespace1 && is_control(char1);
+    let line_break2 = whitespace2 && is_control(char2);
     let blank_line1 = line_break1 && (one.ends_with("\n\n") || one.ends_with("\n\r\n"));
     let blank_line2 = line_break2 && (two.starts_with("\n\n") || two.starts_with("\r\n\r\n"));
 
@@ -893,4 +904,19 @@ impl<'a> From<Diff<'a, 'a>> for Chunk<'a> {
             Diff::Insert(range) => Chunk::Insert(str(range)),
         }
     }
+}
+
+fn is_ascii_alphanumeric(s: &str) -> bool {
+    assert!(s.as_bytes().len() >= 1);
+    s.as_bytes()[0].is_ascii_alphanumeric()
+}
+
+fn is_ascii_whitespace(s: &str) -> bool {
+    assert!(s.as_bytes().len() >= 1);
+    s.as_bytes()[0].is_ascii_whitespace()
+}
+
+fn is_control(s: &str) -> bool {
+    assert!(s.as_bytes().len() >= 1);
+    (s.as_bytes()[0] as char).is_control()
 }

@@ -1,7 +1,9 @@
 use crate::find::find;
+
+use unicode_segmentation::{GraphemeIndices, Graphemes, UnicodeSegmentation};
+
 use std::fmt::Debug;
 use std::ops::{self, RangeFrom, RangeFull, RangeTo};
-use std::str::{CharIndices, Chars};
 
 #[derive(Copy, Clone)]
 pub struct Range<'a> {
@@ -50,12 +52,12 @@ impl<'a> Range<'a> {
         (self.substring(..mid), self.substring(mid..))
     }
 
-    pub fn chars(&self) -> Chars<'a> {
-        str(*self).chars()
+    pub fn graphemes(&self) -> Graphemes<'a> {
+        str(*self).graphemes(crate::USE_EXTENDED_GRAPHEMES)
     }
 
-    pub fn char_indices(&self) -> CharIndices<'a> {
-        str(*self).char_indices()
+    pub fn grapheme_indices(&self) -> GraphemeIndices<'a> {
+        str(*self).grapheme_indices(crate::USE_EXTENDED_GRAPHEMES)
     }
 
     pub fn bytes(&self) -> impl Iterator<Item = u8> + DoubleEndedIterator + ExactSizeIterator + 'a {
