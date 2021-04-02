@@ -59,6 +59,7 @@
 )]
 
 mod find;
+pub mod owned;
 pub mod range;
 
 #[cfg(test)]
@@ -907,16 +908,16 @@ impl<'a> From<Diff<'a, 'a>> for Chunk<'a> {
 }
 
 fn is_ascii_alphanumeric(s: &str) -> bool {
-    assert!(s.as_bytes().len() >= 1);
+    assert!(!s.as_bytes().is_empty());
     s.as_bytes()[0].is_ascii_alphanumeric()
 }
 
 fn is_ascii_whitespace(s: &str) -> bool {
-    assert!(s.as_bytes().len() >= 1);
+    assert!(!s.as_bytes().is_empty());
     s.as_bytes()[0].is_ascii_whitespace()
 }
 
 fn is_control(s: &str) -> bool {
-    assert!(s.as_bytes().len() >= 1);
+    assert!(!s.as_bytes().is_empty());
     (s.as_bytes()[0] as char).is_control()
 }
