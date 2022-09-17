@@ -2,8 +2,6 @@
 name = "dissimilar"
 version = "2.0.0"
 authors = ["David Tolnay <dtolnay@gmail.com>", "Zack Hixon <zphixon@gmail.com>"]
-edition = "2018"
-license = "MIT OR Apache-2.0"
 description = "Diff library with semantic cleanup, based on Google's diff-match-patch"
 documentation = "https://docs.rs/dissimilar"
 edition = "2018"
