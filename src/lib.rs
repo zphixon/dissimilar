@@ -2,7 +2,7 @@
 //!
 //! [github]: https://img.shields.io/badge/github-8da0cb?style=for-the-badge&labelColor=555555&logo=github
 //! [crates-io]: https://img.shields.io/badge/crates.io-fc8d62?style=for-the-badge&labelColor=555555&logo=rust
-//! [docs-rs]: https://img.shields.io/badge/docs.rs-66c2a5?style=for-the-badge&labelColor=555555&logoColor=white&logo=data:image/svg+xml;base64,PHN2ZyByb2xlPSJpbWciIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgdmlld0JveD0iMCAwIDUxMiA1MTIiPjxwYXRoIGZpbGw9IiNmNWY1ZjUiIGQ9Ik00ODguNiAyNTAuMkwzOTIgMjE0VjEwNS41YzAtMTUtOS4zLTI4LjQtMjMuNC0zMy43bC0xMDAtMzcuNWMtOC4xLTMuMS0xNy4xLTMuMS0yNS4zIDBsLTEwMCAzNy41Yy0xNC4xIDUuMy0yMy40IDE4LjctMjMuNCAzMy43VjIxNGwtOTYuNiAzNi4yQzkuMyAyNTUuNSAwIDI2OC45IDAgMjgzLjlWMzk0YzAgMTMuNiA3LjcgMjYuMSAxOS45IDMyLjJsMTAwIDUwYzEwLjEgNS4xIDIyLjEgNS4xIDMyLjIgMGwxMDMuOS01MiAxMDMuOSA1MmMxMC4xIDUuMSAyMi4xIDUuMSAzMi4yIDBsMTAwLTUwYzEyLjItNi4xIDE5LjktMTguNiAxOS45LTMyLjJWMjgzLjljMC0xNS05LjMtMjguNC0yMy40LTMzLjd6TTM1OCAyMTQuOGwtODUgMzEuOXYtNjguMmw4NS0zN3Y3My4zek0xNTQgMTA0LjFsMTAyLTM4LjIgMTAyIDM4LjJ2LjZsLTEwMiA0MS40LTEwMi00MS40di0uNnptODQgMjkxLjFsLTg1IDQyLjV2LTc5LjFsODUtMzguOHY3NS40em0wLTExMmwtMTAyIDQxLjQtMTAyLTQxLjR2LS42bDEwMi0zOC4yIDEwMiAzOC4ydi42em0yNDAgMTEybC04NSA0Mi41di03OS4xbDg1LTM4Ljh2NzUuNHptMC0xMTJsLTEwMiA0MS40LTEwMi00MS40di0uNmwxMDItMzguMiAxMDIgMzguMnYuNnoiPjwvcGF0aD48L3N2Zz4K
+//! [docs-rs]: https://img.shields.io/badge/docs.rs-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs
 //!
 //! <br>
 //!
@@ -41,21 +41,25 @@
 //! [Myers' diff algorithm]: https://neil.fraser.name/writing/diff/myers.pdf
 //! [semantic cleanups]: https://neil.fraser.name/writing/diff/
 
-#![doc(html_root_url = "https://docs.rs/dissimilar/1.0.2")]
+#![doc(html_root_url = "https://docs.rs/dissimilar/1.0.4")]
 #![allow(
     clippy::blocks_in_if_conditions,
+    clippy::bool_to_int_with_if,
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss,
+    clippy::cloned_instead_of_copied, // https://github.com/rust-lang/rust-clippy/issues/7127
     clippy::collapsible_else_if,
     clippy::comparison_chain,
     clippy::match_same_arms,
     clippy::module_name_repetitions,
     clippy::must_use_candidate,
     clippy::new_without_default,
+    clippy::octal_escapes,
     clippy::shadow_unrelated,
     clippy::similar_names,
     clippy::too_many_lines,
-    clippy::unseparated_literal_suffix
+    clippy::unseparated_literal_suffix,
+    unused_parens, // false positive on Some(&(mut diff)) pattern
 )]
 
 mod find;
@@ -444,10 +448,28 @@ fn cleanup_char_boundary(solution: &mut Solution) {
         adjust
     }
 
-    for diff in &mut solution.diffs {
-        match diff {
+    fn skip_overlap<'a>(prev: &Range<'a>, range: &mut Range<'a>) {
+        let prev_end = prev.offset + prev.len;
+        if prev_end > range.offset {
+            let delta = cmp::min(prev_end - range.offset, range.len);
+            range.offset += delta;
+            range.len -= delta;
+        }
+    }
+
+    let mut read = 0;
+    let mut retain = 0;
+    let mut last_delete = Range::empty();
+    let mut last_insert = Range::empty();
+    while let Some(&(mut diff)) = solution.diffs.get(read) {
+        read += 1;
+        match &mut diff {
             Diff::Equal(range1, range2) => {
                 let adjust = boundary_up(range1.doc, range1.offset);
+                // If the whole range is sub-character, skip it.
+                if range1.len <= adjust {
+                    continue;
+                }
                 range1.offset += adjust;
                 range1.len -= adjust;
                 range2.offset += adjust;
@@ -455,24 +477,39 @@ fn cleanup_char_boundary(solution: &mut Solution) {
                 let adjust = boundary_down(range1.doc, range1.offset + range1.len);
                 range1.len -= adjust;
                 range2.len -= adjust;
+                last_delete = Range::empty();
+                last_insert = Range::empty();
             }
             Diff::Delete(range) => {
+                skip_overlap(&last_delete, range);
+                if range.len == 0 {
+                    continue;
+                }
                 let adjust = boundary_down(range.doc, range.offset);
                 range.offset -= adjust;
                 range.len += adjust;
                 let adjust = boundary_up(range.doc, range.offset + range.len);
                 range.len += adjust;
+                last_delete = *range;
             }
             Diff::Insert(range) => {
+                skip_overlap(&last_insert, range);
+                if range.len == 0 {
+                    continue;
+                }
                 let adjust = boundary_down(range.doc, range.offset);
                 range.offset -= adjust;
                 range.len += adjust;
                 let adjust = boundary_up(range.doc, range.offset + range.len);
                 range.len += adjust;
+                last_insert = *range;
             }
         }
+        solution.diffs[retain] = diff;
+        retain += 1;
     }
 
+    solution.diffs.truncate(retain);
     solution.utf8 = true;
 }
 

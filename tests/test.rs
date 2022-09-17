@@ -3,6 +3,8 @@
 //
 // This directory is for Rust-specific integration tests and regression tests.
 
+#![allow(clippy::non_ascii_literal)]
+
 use dissimilar::{diff, Chunk};
 
 #[test]
@@ -16,4 +18,23 @@ fn test_unicode() {
 
     let d = diff(snowman, comet);
     assert_eq!(d, vec![Chunk::Delete(snowman), Chunk::Insert(comet)]);
+}
+
+#[test]
+fn test_unicode2() {
+    let a = "[乀丁abcd一]";
+    let b = "[一abcd丁]";
+    let d = diff(a, b);
+    assert_eq!(
+        d,
+        vec![
+            Chunk::Equal("["),
+            Chunk::Delete("乀丁"),
+            Chunk::Insert("一"),
+            Chunk::Equal("abcd"),
+            Chunk::Delete("一"),
+            Chunk::Insert("丁"),
+            Chunk::Equal("]"),
+        ]
+    );
 }
